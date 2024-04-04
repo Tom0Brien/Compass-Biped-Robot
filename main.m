@@ -4,8 +4,8 @@ clc; clear; close all;
 n_x = 8;
 phs = PortHamiltonianSystem(@mass_matrix, @damping_matrix, @input_matrix, @potential_energy, n_x);
 foot = 'left';
-constraints.left = @constraint_left;
-constraints.right = @constraint_right;
+modes.left = @constraint_left;
+modes.right = @constraint_right;
 events.left = @left_foot_touchdown;
 events.right = @right_foot_touchdown;
 
@@ -17,15 +17,17 @@ step_count = 0;
 max_steps = 4;
 x_history = [];
 time = [];
+mode_indices = [1]; 
+mode_label = {foot}; 
 
 while(current_time < total_sim_time) && (step_count < max_steps)
     % Set constraints based on the current foot
     if strcmp(foot, 'left')
-        phs.set_constraints(constraints.left);
+        phs.set_constraints(modes.left);
         options = odeset('Events', events.left,'RelTol',1e-5,'AbsTol',1e-5);
         dxdt = @(t,x) phs.forward_dynamics(x, [0; 0; 0; 0]);
     else
-        phs.set_constraints(constraints.right);
+        phs.set_constraints(modes.right);
         options = odeset(options, 'Events', events.right,'RelTol',1e-5,'AbsTol',1e-5);
         dxdt = @(t,x) phs.forward_dynamics(x, [0; 0; 0; 0]);
     end
@@ -43,72 +45,86 @@ while(current_time < total_sim_time) && (step_count < max_steps)
         % Switch foot and apply impact mapping
         if strcmp(foot, 'left')
             foot = 'right';
-            x0 = phs.impact_mapping(xe(end,:)', constraints.right);
+            x0 = phs.impact_mapping(xe(end,:)', modes.right);
         else
             foot = 'left';
-            x0 = phs.impact_mapping(xe(end,:)', constraints.left);
+            x0 = phs.impact_mapping(xe(end,:)', modes.left);
         end
     else
         current_time = t(end);
     end
+
+    mode_indices = [mode_indices; size(x_history, 1) + 1]; 
+    mode_label{end + 1} = foot;
     
     step_count = step_count + 1;
 end
 
 %% Plot
 
-% Plot Configuration Variables
-fig1 = figure; 
+%% Plot Configuration Variables with mode colors
+fig1 = figure;
+colors = {'#8cc5e3', '#1a80bb'}; % blue for left, red for right
 for i = 1:4
     subplot(4, 1, i);
-    plot(time, x_history(:,i), 'LineWidth', 4); 
-    ylabel(['$q_' num2str(i) '$'], 'Interpreter', 'latex'); 
+    hold on;
+    for j = 1:length(mode_indices)-1
+        idx_start = mode_indices(j);
+        idx_end = mode_indices(j+1)-1;
+        mode = mode_label{j};
+        color = colors{strcmp(mode, 'left')+1};
+        plot(time(idx_start:idx_end), x_history(idx_start:idx_end, i), 'LineWidth', 4, 'Color', color);
+    end
+    hold off;
+    ylabel(['$q_' num2str(i) '$'], 'Interpreter', 'latex');
     grid on;
     if i == 1
-        title('Configuration Variables Over Time', 'Interpreter', 'latex');
+        legend('Left contact', 'Right contact', 'Location', 'northwest');
+        title('Configuration', 'Interpreter', 'latex');
     end
 end
 xlabel('Time (s)', 'Interpreter', 'latex');
-set(findall(fig1,'type','text'),'FontSize',16, 'Interpreter', 'latex');
-set(findall(fig1,'type','axes'),'FontSize',16);
-set(findall(fig1,'type','line'),'LineWidth',4);
+format_plot(fig1);
 
-% Plot momentum variables
-fig2 = figure; 
-for i = 1:4
-    subplot(4, 1, i);
-    plot(time, x_history(:,i+4), 'LineWidth', 4); 
-    ylabel(['$p_' num2str(i) '$'], 'Interpreter', 'latex'); 
+%% Plot momentum variables with mode colors
+fig2 = figure;
+for i = 1:2
+    subplot(2, 1, i);
+    hold on;
+    plot(time, x_history(:, i+4), 'k--', 'LineWidth', 2);
+    for j = 1:length(mode_indices)-1
+        idx_start = mode_indices(j);
+        idx_end = mode_indices(j+1)-1;
+        mode = mode_label{j};
+        color = colors{strcmp(mode, 'left')+1};
+        plot(time(idx_start:idx_end), x_history(idx_start:idx_end, i+4), 'LineWidth', 4, 'Color', color);
+    end
+    hold off;
+    ylabel(['$p_' num2str(i) '$'],'FontSize',16, 'Interpreter', 'latex');
     grid on;
     if i == 1
-        title('Momentum Variables Over Time', 'Interpreter', 'latex');
+        legend('Impact','Left', 'Right', 'Location', 'southeast','FontSize',10);
+        title('Momentum', 'Interpreter', 'latex','FontSize',14)
     end
 end
-xlabel('Time (s)', 'Interpreter', 'latex');
-set(findall(fig2,'type','text'),'FontSize',16, 'Interpreter', 'latex');
-set(findall(fig2,'type','axes'),'FontSize',16);
-set(findall(fig2,'type','line'),'LineWidth',4);
+xlabel('Time (s)','FontSize',14, 'Interpreter', 'latex');
 
-% Plot Limit Cycle (Momentum vs. Configuration)
+%% Plot Limit Cycle (Momentum vs. Configuration)
 fig3 = figure; 
-plot(x_history(:,3), x_history(:,5), 'LineWidth', 4);
+plot(x_history(:,3), x_history(:,5), 'LineWidth', 4, 'Color', colors{2});
 xlabel('$q_3$', 'Interpreter', 'latex'); 
 ylabel('$p_1$', 'Interpreter', 'latex');
-title('Limit Cycle: $p_1$ vs $q_3$', 'Interpreter', 'latex');
+title('Limit Cycle', 'Interpreter', 'latex');
 grid on; 
-set(findall(fig3,'type','text'),'FontSize',16, 'Interpreter', 'latex');
-set(findall(fig3,'type','axes'),'FontSize',16);
-set(findall(fig3,'type','line'),'LineWidth',4);
+format_plot(fig3);
 
 fig4 = figure; 
-plot(x_history(:,4), x_history(:,6), 'LineWidth', 4);
+plot(x_history(:,4), x_history(:,6), 'LineWidth', 4, 'Color', colors{2});
 xlabel('$q_4$', 'Interpreter', 'latex'); 
 ylabel('$p_2$', 'Interpreter', 'latex');
-title('Limit Cycle: $p_2$ vs $q_4$', 'Interpreter', 'latex');
+title('Limit Cycle', 'Interpreter', 'latex');
 grid on; 
-set(findall(fig4,'type','text'),'FontSize',16, 'Interpreter', 'latex');
-set(findall(fig4,'type','axes'),'FontSize',16);
-set(findall(fig4,'type','line'),'LineWidth',4);
+format_plot(fig4);
 
 % Ensure the 'results' folder exists or create it
 if ~exist('results', 'dir')
@@ -116,34 +132,41 @@ if ~exist('results', 'dir')
 end
 
 % Save the figures
-exportgraphics(fig1, 'results/configuration_variables.png', 'Resolution', 300);
-exportgraphics(fig2, 'results/momentum_variables.png', 'Resolution', 300);
-exportgraphics(fig3, 'results/limit_cycle_1.png', 'Resolution', 300);
-exportgraphics(fig4, 'results/limit_cycle_2.png', 'Resolution', 300);
+exportgraphics(fig1, 'results/configuration_variables.png', 'Resolution', 600);
+exportgraphics(fig2, 'results/momentum_variables.png', 'Resolution', 600);
+exportgraphics(fig3, 'results/limit_cycle_1.png', 'Resolution', 600);
+exportgraphics(fig4, 'results/limit_cycle_2.png', 'Resolution', 600);
 
-%% Animate
-videoFile = 'results/robot_animation.mp4';
-v = VideoWriter(videoFile);
-v.FrameRate = 60; 
-v.Quality = 100; 
-open(v);
+% %% Animate
+% videoFile = 'results/robot_animation.mp4';
+% v = VideoWriter(videoFile);
+% v.FrameRate = 60; 
+% v.Quality = 100; 
+% open(v);
+% 
+% fig5 = figure;
+% robot = importrobot('urdf/cbr.urdf');
+% robot.DataFormat = 'column';
+% nq = size(homeConfiguration(robot),1); 
+% 
+% axis([-1 10 -2 2]); 
+% for i = 1:size(x_history,1)
+%     show(robot, x_history(i, 1:nq)', 'PreservePlot', false);
+%     drawnow;
+%     frame = getframe(fig5); 
+%     writeVideo(v, frame); 
+% end
+% 
+% % Close the video file
+% close(v);
+% close all;
 
-fig5 = figure;
-robot = importrobot('urdf/cbr.urdf');
-robot.DataFormat = 'column';
-nq = size(homeConfiguration(robot),1); 
-
-axis([-1 10 -2 2]); 
-for i = 1:size(x_history,1)
-    show(robot, x_history(i, 1:nq)', 'PreservePlot', false);
-    drawnow;
-    frame = getframe(fig5); 
-    writeVideo(v, frame); 
+%% Helper
+function format_plot(fig)
+    set(findall(fig,'type','text'),'FontSize',16, 'Interpreter', 'latex');
+    set(findall(fig,'type','axes'),'FontSize',16);
+    set(findall(fig,'type','line'),'LineWidth',4);
 end
-
-% Close the video file
-close(v);
-close all;
 
 %% Function for the mass matrix
 function M = mass_matrix(q)
